@@ -1,0 +1,6 @@
+../Core/Src/freertos.c:102:6:MX_FREERTOS_Init	1
+../Core/Src/freertos.c:150:6:StartDefaultTask	1
+../Core/Src/freertos.c:171:6:StartCommunicationTask	1
+../Core/Src/freertos.c:189:6:StartReadSensorsTask	2
+../Core/Src/freertos.c:206:6:Debug	2
+../Core/Src/freertos.c:215:6:SendToUSB	10
