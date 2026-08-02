@@ -51,7 +51,11 @@ Core/Src/freertos.o: ../Core/Src/freertos.c \
  ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc/usbd_ctlreq.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/include/semphr.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/include/queue.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h
+ ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h \
+ ../Core/Inc/spi.h ../Core/Inc/main.h ../Core/Inc/nRF24L01.h \
+ ../Core/Inc/SecureProtocol.h ../Core/Inc/Crypto.h \
+ ../Core/Inc/SecureTransport.h ../Core/Inc/SecureProtocol.h \
+ ../Core/Inc/DeviceKeys.h
 ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h:
 ../Core/Inc/FreeRTOSConfig.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/include/projdefs.h:
@@ -106,3 +110,11 @@ Core/Src/freertos.o: ../Core/Src/freertos.c \
 ../Middlewares/Third_Party/FreeRTOS/Source/include/semphr.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/include/queue.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h:
+../Core/Inc/spi.h:
+../Core/Inc/main.h:
+../Core/Inc/nRF24L01.h:
+../Core/Inc/SecureProtocol.h:
+../Core/Inc/Crypto.h:
+../Core/Inc/SecureTransport.h:
+../Core/Inc/SecureProtocol.h:
+../Core/Inc/DeviceKeys.h:

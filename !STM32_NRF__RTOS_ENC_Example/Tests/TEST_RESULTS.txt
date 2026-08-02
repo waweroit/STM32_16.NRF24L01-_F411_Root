@@ -1,0 +1,29 @@
+Test date: 2026-08-02
+Host compiler mode: C11, -O2 -Wall -Wextra -Wpedantic -Werror
+
+Compiled successfully:
+- CommonLibrary/Src/tiny_aes.c
+- CommonLibrary/Src/Crypto.c
+- CommonLibrary/Src/DeviceKeys.c
+- CommonLibrary/Src/SecureProtocol.c
+- CommonLibrary/Src/SecureTransport.c
+- CommonLibrary/Src/nRF24L01.c (HAL host stub)
+- Device1/Core/Src/device1_app.c (HAL/CMSIS-RTOS v2 host stubs)
+- Device1/Core/Src/secure_storage_port.c
+- Device2/Core/Src/device2_app.c (HAL/CMSIS-RTOS v2 host stubs)
+- Device2/Core/Src/secure_storage_port.c
+
+Runtime result:
+Tests: 346, failed: 0
+
+Fragmentation/reassembly checks include:
+- <=11-byte direct transport path
+- 13-byte "Hello World !" -> 2 fragments -> original message
+- 256-byte message -> 37 fragments -> original message
+- all RF frames <= 32 bytes
+- missing-fragment behavior
+- next-message recovery after incomplete reassembly
+- >256-byte rejection
+- tampered fragment rejected by SecureProtocol CMAC
+
+The host check validates syntax/API integration and protocol/transport behavior. It is not a substitute for a final STM32CubeIDE ARM build against CubeMX-generated code and the actual PCB pin configuration.

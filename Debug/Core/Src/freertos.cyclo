@@ -1,6 +1,11 @@
-../Core/Src/freertos.c:102:6:MX_FREERTOS_Init	1
-../Core/Src/freertos.c:150:6:StartDefaultTask	1
-../Core/Src/freertos.c:171:6:StartCommunicationTask	1
-../Core/Src/freertos.c:189:6:StartReadSensorsTask	2
-../Core/Src/freertos.c:206:6:Debug	2
-../Core/Src/freertos.c:215:6:SendToUSB	10
+../Core/Src/freertos.c:156:6:MX_FREERTOS_Init	3
+../Core/Src/freertos.c:214:6:StartDefaultTask	1
+../Core/Src/freertos.c:235:6:StartCommunicationTask	3
+../Core/Src/freertos.c:272:6:StartReadSensorsTask	3
+../Core/Src/freertos.c:306:16:Device1Communication_Init	10
+../Core/Src/freertos.c:388:13:Communication_RecordProtocolError	3
+../Core/Src/freertos.c:404:16:Communication_RestoreRx	3
+../Core/Src/freertos.c:425:13:Communication_TransmitMessage	18
+../Core/Src/freertos.c:544:13:Communication_PollRx	7
+../Core/Src/freertos.c:617:6:Debug	2
+../Core/Src/freertos.c:626:6:SendToUSB	10
