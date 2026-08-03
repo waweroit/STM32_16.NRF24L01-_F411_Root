@@ -1,2 +1,1 @@
-../Core/Src/DeviceKeys.c:20:6:DeviceKeys_GetMasterKey	24	static
-../Core/Src/DeviceKeys.c:36:16:DeviceKeys_DeriveConnectionKey	40	static
+../Core/Src/DeviceKeys.c:5:16:DeviceKeys_DeriveConnectionKey	40	static

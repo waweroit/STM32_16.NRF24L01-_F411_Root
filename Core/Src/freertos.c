@@ -25,42 +25,20 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "usbd_cdc_if.h"
-#include "string.h"
-#include "semphr.h"
+#include <stdio.h>
+#include <string.h>
 #include "spi.h"
-#include "nRF24L01.h"
-#include "SecureProtocol.h"
-#include "SecureTransport.h"
-#include "DeviceKeys.h"
+#include "UsbDebug.h"
+#include "SecureCommunication.h"
+#include "Communication.h"
+#include "CommunicationLink.h"
+#include "NrfLink.h"
+#include "CommunicationDevices.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define DBG_TX_BUFFER_SIZE  256
 
-#define LOCAL_DEVICE_ID            0x01u
-#define DEVICE_2_ID                0x02u
-#define NRF_TX_QUEUE_DEPTH         3u
-#define NRF_RX_QUEUE_DEPTH         3u
-#define NRF_SEND_TIMEOUT_MS        30u
-#define DEVICE1_DEMO_BOOT_COUNTER  1u
-
-typedef struct
-{
-    uint8_t destinationId;
-    SecureMessageType_t messageType;
-    uint16_t payloadLength;
-    uint8_t payload[SECURE_TRANSPORT_MAX_MESSAGE_SIZE];
-} NrfTxMessage_t;
-
-typedef struct
-{
-    uint8_t sourceId;
-    SecureMessageType_t messageType;
-    uint16_t payloadLength;
-    uint8_t payload[SECURE_TRANSPORT_MAX_MESSAGE_SIZE];
-} NrfRxMessage_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -75,70 +53,47 @@ typedef struct
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
+volatile uint8_t ToggleLed = 1u;
 
-extern uint8_t UserRxBufferFS[APP_RX_DATA_SIZE];
-extern uint8_t recvDone;
-extern uint32_t recvLen;
+/*
+ * Select this firmware instance from the central device table.
+ * currentDevice is ROOT Device 0x01, measurementDevice is Device 0x02.
+ */
+static const CommunicationDevice_t * const measurementDevice = &communicationDevices[1];
+static const CommunicationDevice_t * const currentDevice = &communicationDevices[0];
 
-volatile uint8_t ToggleLed = 1;
-
-osMessageQueueId_t nrfTxQueueHandle;
-osMessageQueueId_t applicationRxQueueHandle;
-
-volatile uint32_t nrfTxMessageSuccessCount = 0u;
-volatile uint32_t nrfTxMessageErrorCount = 0u;
-volatile uint32_t nrfTxFragmentSuccessCount = 0u;
-volatile uint32_t nrfTxFragmentErrorCount = 0u;
-volatile uint32_t nrfRxFragmentCount = 0u;
-volatile uint32_t nrfRxMessageCount = 0u;
-volatile uint32_t secureAuthErrorCount = 0u;
-volatile uint32_t secureReplayErrorCount = 0u;
-volatile uint32_t device1SessionId = 0u;
-
-static NRF24_Handle_t nrfRadio;
-static SecureProtocolContext_t secureProtocol;
-static SecureTransportContext_t secureTransport;
-static uint8_t communicationInitialized = 0u;
-
-static const uint8_t device1RadioAddress[5] = {0xE7u, 0xE7u, 0xE7u, 0xE7u, 0x01u};
-static const uint8_t device2RadioAddress[5] = {0xE7u, 0xE7u, 0xE7u, 0xE7u, 0x02u};
-
+static SecureCommunication_t secureCommunication;
+static NrfLink_t nrfLink;
+static Communication_t communication;
 /* USER CODE END Variables */
+
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
-  .stack_size = 128 * 4,
+  .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
+
 /* Definitions for CommunicationTa */
 osThreadId_t CommunicationTaHandle;
 const osThreadAttr_t CommunicationTa_attributes = {
   .name = "CommunicationTa",
-  .stack_size = 512 * 4,
+  .stack_size = 1024 * 4,
   .priority = (osPriority_t) osPriorityHigh,
 };
+
 /* Definitions for ReadSensorsTask */
 osThreadId_t ReadSensorsTaskHandle;
 const osThreadAttr_t ReadSensorsTask_attributes = {
   .name = "ReadSensorsTask",
-  .stack_size = 256 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityBelowNormal,
 };
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
-
-/* Deklaracja zewnętrznej struktury USB z biblioteki ST (wygenerowanej przez CubeMX) */
-extern USBD_HandleTypeDef hUsbDeviceFS;
-void Debug(const char *msg);
-void SendToUSB(uint8_t* Buf, uint16_t Len);
-static uint8_t Device1Communication_Init(void);
-static void Communication_PollRx(void);
-static void Communication_TransmitMessage(const NrfTxMessage_t *message);
-static void Communication_RecordProtocolError(SecureProtocolStatus_t status);
-static uint8_t Communication_RestoreRx(void);
-
+static void LogCommunicationError(CommunicationStatus_t status);
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void *argument);
@@ -171,17 +126,7 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  nrfTxQueueHandle = osMessageQueueNew(NRF_TX_QUEUE_DEPTH,
-                                       sizeof(NrfTxMessage_t),
-                                       NULL);
-  applicationRxQueueHandle = osMessageQueueNew(NRF_RX_QUEUE_DEPTH,
-                                                sizeof(NrfRxMessage_t),
-                                                NULL);
-
-  if (nrfTxQueueHandle != NULL && applicationRxQueueHandle != NULL)
-  {
-    communicationInitialized = Device1Communication_Init();
-  }
+  (void)UsbDebug_CreateOsObjects();
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
@@ -201,7 +146,6 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
   /* USER CODE END RTOS_EVENTS */
-
 }
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -216,11 +160,25 @@ void StartDefaultTask(void *argument)
   /* init code for USB_DEVICE */
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN StartDefaultTask */
-  Debug("Welcome to my world :D ...\r\n");
-  /* Infinite loop */
-  for(;;)
+  uint32_t lastLedToggle = HAL_GetTick();
+  (void)argument;
+
+  DebugPrintf("Device 0x%02X started\r\n", currentDevice->deviceId);
+
+  for (;;)
   {
-    osDelay(1);
+    uint32_t now = HAL_GetTick();
+
+    UsbDebug_Process();
+
+    if (ToggleLed != 0u && (uint32_t)(now - lastLedToggle) >= 15000u)
+    {
+      lastLedToggle = now;
+      HAL_GPIO_TogglePin(BLUE_LED_GPIO_Port, BLUE_LED_Pin);
+      Debug("ROOT alive\r\n");
+    }
+
+    osDelay(2u);
   }
   /* USER CODE END StartDefaultTask */
 }
@@ -235,26 +193,87 @@ void StartDefaultTask(void *argument)
 void StartCommunicationTask(void *argument)
 {
   /* USER CODE BEGIN StartCommunicationTask */
-  NrfTxMessage_t txMessage;
+  CommunicationMessage_t receivedMessage;
+  CommunicationLink_t linkInterface;
+  NRF24_Status_t nrfStatus;
   (void)argument;
 
-  if (communicationInitialized == 0u)
+  /* 1. Software/security layer: logical Device ID + key. */
+  if (!SecureCommunication_Init(&secureCommunication,
+                                currentDevice->deviceId,
+                                currentDevice->deviceKey))
   {
-    Debug("Communication init failed\r\n");
+    Debug("SecureCommunication init failed\r\n");
     for (;;)
     {
       osDelay(1000u);
     }
   }
 
+  /* Authorize the selected peer with that device's individual key. */
+  if (!SecureCommunication_AuthorizePeer(&secureCommunication,
+										  measurementDevice->deviceId,
+										  measurementDevice->deviceKey))
+  {
+    Debug("Secure peer authorization failed\r\n");
+    for (;;)
+    {
+      osDelay(1000u);
+    }
+  }
+
+  /* 2. Hardware/link layer: SPI + GPIO + physical nRF24 address only. */
+  nrfStatus = NrfLink_Init(&nrfLink,
+                           &hspi1,
+                           NRF24_CE_GPIO_Port,
+                           NRF24_CE_Pin,
+                           SPI1_NRF24_CS_GPIO_Port,
+                           SPI1_NRF24_CS_Pin,
+                           currentDevice->nrfAddress);
+  if (nrfStatus != NRF24_OK)
+  {
+    DebugPrintf("NRF init failed: %s\r\n", NRF24_StatusToString(nrfStatus));
+    for (;;)
+    {
+      osDelay(1000u);
+    }
+  }
+
+  /* 3. Generic routing joins SecureCommunication with the selected HW link. */
+  linkInterface = NrfLink_AsCommunicationLink(&nrfLink);
+  if (!Communication_Init(&communication, &secureCommunication, &linkInterface) ||
+      !Communication_AddRoute(&communication,
+                                measurementDevice->deviceId,
+                                measurementDevice->nrfAddress,
+                                NRF_LINK_ADDRESS_SIZE))
+  {
+    Debug("Communication routing init failed\r\n");
+    for (;;)
+    {
+      osDelay(1000u);
+    }
+  }
+
+  DebugPrintf("Communication initialized: logical ID=0x%02X\r\n",
+              currentDevice->deviceId);
+
   for (;;)
   {
-    /* RX is serviced first so the radio spends the normal state listening. */
-    Communication_PollRx();
+    CommunicationStatus_t status = Communication_Process(&communication);
 
-    if (osMessageQueueGet(nrfTxQueueHandle, &txMessage, NULL, 0u) == osOK)
+    if (status != COMMUNICATION_OK && status != COMMUNICATION_IDLE)
     {
-      Communication_TransmitMessage(&txMessage);
+      LogCommunicationError(status);
+    }
+
+    while (Communication_TryReceive(&communication, &receivedMessage))
+    {
+      DebugMessage("RX",
+                   receivedMessage.sourceId,
+                   receivedMessage.destinationId,
+                   (uint8_t)receivedMessage.messageType,
+                   receivedMessage.payload,
+                   receivedMessage.payloadLength);
     }
 
     osDelay(1u);
@@ -272,413 +291,79 @@ void StartCommunicationTask(void *argument)
 void StartReadSensorsTask(void *argument)
 {
   /* USER CODE BEGIN StartReadSensorsTask */
-  static const uint8_t helloMessage[] =
-  {
-    'H','e','l','l','o',' ',
-    'W','o','r','l','d',' ','!'
-  };
-  NrfTxMessage_t message;
+//  static const char helloWorld[] = "Hello World";
+//  uint8_t counter = 0;
+//  char buffer[32];
+
   (void)argument;
 
-  osDelay(5000u);
+  while (!Communication_IsInitialized(&communication))
+  {
+    osDelay(100u);
+  }
+
+  osDelay(1000u);
 
   for (;;)
   {
-    memset(&message, 0, sizeof(message));
-    message.destinationId = DEVICE_2_ID;
-    message.messageType = MESSAGE_TYPE_HEARTBEAT;
-    message.payloadLength = (uint16_t)sizeof(helloMessage);
-    memcpy(message.payload, helloMessage, sizeof(helloMessage));
+//	snprintf(buffer, sizeof(buffer), " %.11s %d !", helloWorld, counter);
+//
+//	if (Communication_Send(&communication,
+//						   rootDevice->deviceId,
+//						   MESSAGE_TYPE_HEARTBEAT,
+//						   buffer,
+//						   (uint16_t)strlen(buffer)))
+//	{
+//	  DebugMessage("TX QUEUED",
+//					currentDevice->deviceId,
+//					rootDevice->deviceId,
+//					(uint8_t)MESSAGE_TYPE_HEARTBEAT,
+//					(const uint8_t *)buffer,
+//					(uint16_t)strlen(buffer));
+//	}
+//	else
+//	{
+//	  Debug("Hello World TX queue failed\r\n");
+//	}
 
-    if (nrfTxQueueHandle == NULL ||
-        osMessageQueuePut(nrfTxQueueHandle, &message, 0u, 0u) != osOK)
-    {
-      Debug("NRF TX queue full/error\r\n");
-    }
-
-    osDelay(5000u);
+	osDelay(10000u);
   }
   /* USER CODE END StartReadSensorsTask */
 }
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
-static uint8_t Device1Communication_Init(void)
+static void LogCommunicationError(CommunicationStatus_t status)
 {
-    uint8_t localKey[CRYPTO_AES_KEY_SIZE];
-    uint8_t peerKey[CRYPTO_AES_KEY_SIZE];
-    uint32_t uniqueId[3];
-    uint32_t sessionId = 0u;
-    uint16_t entropySample;
-    SecureProtocolStatus_t protocolStatus;
-    SecureTransportStatus_t transportStatus;
-    NRF24_Status_t radioStatus;
-
-    if (!DeviceKeys_GetMasterKey(LOCAL_DEVICE_ID, localKey) ||
-        !DeviceKeys_GetMasterKey(DEVICE_2_ID, peerKey))
+    if (status == COMMUNICATION_PROCESS_LINK_ERROR)
     {
-        return 0u;
+        DebugPrintf("Communication link error: %s\r\n",
+                    CommunicationLink_StatusToString(
+                        Communication_GetLastLinkStatus(&communication)));
     }
-
-    uniqueId[0] = HAL_GetUIDw0();
-    uniqueId[1] = HAL_GetUIDw1();
-    uniqueId[2] = HAL_GetUIDw2();
-    entropySample = (uint16_t)(uniqueId[0] ^ uniqueId[1] ^ uniqueId[2] ^ HAL_GetTick());
-
-    /*
-     * Bench-session generation. For deployment, DEVICE1_DEMO_BOOT_COUNTER must
-     * be replaced by a monotonic boot generation stored in persistent memory.
-     */
-    protocolStatus = SecureProtocol_GenerateSessionId(localKey,
-                                                       uniqueId,
-                                                       DEVICE1_DEMO_BOOT_COUNTER,
-                                                       HAL_GetTick(),
-                                                       entropySample,
-                                                       &sessionId);
-    if (protocolStatus != SECURE_PROTOCOL_OK)
+    else if (status == COMMUNICATION_SECURE_ERROR)
     {
-        return 0u;
-    }
+        SecureTransportStatus_t secureStatus =
+            Communication_GetLastSecureStatus(&communication);
 
-    device1SessionId = sessionId;
+        DebugPrintf("Secure communication error: %s",
+                    SecureTransport_StatusToString(secureStatus));
 
-    protocolStatus = SecureProtocol_Init(&secureProtocol,
-                                         LOCAL_DEVICE_ID,
-                                         sessionId,
-                                         localKey);
-    if (protocolStatus != SECURE_PROTOCOL_OK)
-    {
-        return 0u;
-    }
+        if (secureStatus == SECURE_TRANSPORT_PROTOCOL_ERROR)
+        {
+            DebugPrintf(" / %s",
+                        SecureProtocol_StatusToString(
+                            SecureCommunication_GetLastProtocolStatus(
+                                &secureCommunication)));
+        }
 
-    protocolStatus = SecureProtocol_AddPeer(&secureProtocol,
-                                            DEVICE_2_ID,
-                                            peerKey);
-    if (protocolStatus != SECURE_PROTOCOL_OK)
-    {
-        return 0u;
-    }
-
-    transportStatus = SecureTransport_Init(&secureTransport, &secureProtocol);
-    if (transportStatus != SECURE_TRANSPORT_OK)
-    {
-        return 0u;
-    }
-
-    radioStatus = NRF24_Init(&nrfRadio,
-                             &hspi1,
-                             NRF24_CE_GPIO_Port,
-                             NRF24_CE_Pin,
-                             SPI1_NRF24_CS_GPIO_Port,
-                             SPI1_NRF24_CS_Pin);
-    if (radioStatus != NRF24_OK)
-    {
-        return 0u;
-    }
-
-    radioStatus = NRF24_SetRxAddress(&nrfRadio, 0u, device1RadioAddress);
-    if (radioStatus == NRF24_OK)
-    {
-        radioStatus = NRF24_StartListening(&nrfRadio);
-    }
-
-    return (radioStatus == NRF24_OK) ? 1u : 0u;
-}
-
-static void Communication_RecordProtocolError(SecureProtocolStatus_t status)
-{
-    if (status == SECURE_PROTOCOL_AUTHENTICATION_FAILED)
-    {
-        ++secureAuthErrorCount;
-    }
-    else if (status == SECURE_PROTOCOL_REPLAY_DETECTED)
-    {
-        ++secureReplayErrorCount;
-    }
-
-    Debug("SecureProtocol RX error: ");
-    Debug(SecureProtocol_StatusToString(status));
-    Debug("\r\n");
-}
-
-static uint8_t Communication_RestoreRx(void)
-{
-    NRF24_Status_t radioStatus;
-
-    radioStatus = NRF24_SetRxAddress(&nrfRadio, 0u, device1RadioAddress);
-    if (radioStatus == NRF24_OK)
-    {
-        radioStatus = NRF24_StartListening(&nrfRadio);
-    }
-
-    if (radioStatus != NRF24_OK)
-    {
-        Debug("NRF RX restore failed: ");
-        Debug(NRF24_StatusToString(radioStatus));
         Debug("\r\n");
-        return 0u;
-    }
-
-    return 1u;
-}
-
-static void Communication_TransmitMessage(const NrfTxMessage_t *message)
-{
-    SecureTransportTxState_t txState;
-    SecureTransportStatus_t transportStatus;
-    NRF24_Status_t radioStatus;
-    uint8_t messageComplete = 0u;
-    uint8_t messageSucceeded = 1u;
-
-    if (message == NULL ||
-        message->destinationId != DEVICE_2_ID ||
-        message->payloadLength > SECURE_TRANSPORT_MAX_MESSAGE_SIZE)
-    {
-        ++nrfTxMessageErrorCount;
-        return;
-    }
-
-    transportStatus = SecureTransport_BeginMessage(&secureTransport,
-                                                    message->destinationId,
-                                                    message->messageType,
-                                                    message->payload,
-                                                    message->payloadLength,
-                                                    &txState);
-    if (transportStatus != SECURE_TRANSPORT_OK)
-    {
-        ++nrfTxMessageErrorCount;
-        Debug("SecureTransport TX begin failed\r\n");
-        return;
-    }
-
-    radioStatus = NRF24_StopListening(&nrfRadio);
-    if (radioStatus == NRF24_OK)
-    {
-        radioStatus = NRF24_SetTxAddress(&nrfRadio, device2RadioAddress);
-    }
-    if (radioStatus == NRF24_OK)
-    {
-        /* Pipe 0 must match TX_ADDR while nRF24 Auto ACK is enabled. */
-        radioStatus = NRF24_SetRxAddress(&nrfRadio, 0u, device2RadioAddress);
-    }
-
-    if (radioStatus != NRF24_OK)
-    {
-        ++nrfTxMessageErrorCount;
-        (void)Communication_RestoreRx();
-        Debug("NRF TX setup failed\r\n");
-        return;
-    }
-
-    while (messageComplete == 0u)
-    {
-        uint8_t frame[SECURE_MAX_FRAME_SIZE];
-        uint8_t frameLength = 0u;
-        bool secureMessageComplete = false;
-
-        transportStatus = SecureTransport_CreateNextFrame(&secureTransport,
-                                                           &txState,
-                                                           frame,
-                                                           (uint8_t)sizeof(frame),
-                                                           &frameLength,
-                                                           &secureMessageComplete);
-        if (transportStatus != SECURE_TRANSPORT_OK)
-        {
-            messageSucceeded = 0u;
-            if (transportStatus == SECURE_TRANSPORT_PROTOCOL_ERROR)
-            {
-                SecureProtocolStatus_t protocolError =
-                    SecureTransport_GetLastProtocolStatus(&secureTransport);
-                Debug("SecureProtocol TX error: ");
-                Debug(SecureProtocol_StatusToString(protocolError));
-                Debug("\r\n");
-            }
-            else
-            {
-                Debug("SecureTransport TX frame failed\r\n");
-            }
-            break;
-        }
-
-        if (frameLength == 0u || frameLength > NRF24_MAX_PAYLOAD_SIZE)
-        {
-            ++nrfTxFragmentErrorCount;
-            messageSucceeded = 0u;
-            Debug("Invalid NRF frame length\r\n");
-            break;
-        }
-
-        radioStatus = NRF24_Send(&nrfRadio,
-                                 frame,
-                                 frameLength,
-                                 NRF_SEND_TIMEOUT_MS);
-        if (radioStatus != NRF24_OK)
-        {
-            ++nrfTxFragmentErrorCount;
-            messageSucceeded = 0u;
-            Debug("NRF TX fragment failed: ");
-            Debug(NRF24_StatusToString(radioStatus));
-            Debug("\r\n");
-            break;
-        }
-
-        ++nrfTxFragmentSuccessCount;
-        messageComplete = secureMessageComplete ? 1u : 0u;
-    }
-
-    if (Communication_RestoreRx() == 0u)
-    {
-        messageSucceeded = 0u;
-    }
-
-    if (messageSucceeded != 0u && messageComplete != 0u)
-    {
-        ++nrfTxMessageSuccessCount;
     }
     else
     {
-        ++nrfTxMessageErrorCount;
+        DebugPrintf("Communication error: %s\r\n",
+                    Communication_StatusToString(status));
     }
-}
-
-static void Communication_PollRx(void)
-{
-    uint8_t frame[SECURE_MAX_FRAME_SIZE];
-    uint8_t frameLength = 0u;
-    uint16_t payloadLength = 0u;
-    uint8_t sourceId = 0u;
-    SecureMessageType_t messageType = MESSAGE_TYPE_NONE;
-    SecureTransportStatus_t transportStatus;
-    NRF24_Status_t radioStatus;
-    NrfRxMessage_t message;
-
-    radioStatus = NRF24_Receive(&nrfRadio,
-                                frame,
-                                (uint8_t)sizeof(frame),
-                                &frameLength);
-    if (radioStatus != NRF24_OK)
-    {
-        Debug("NRF RX failed: ");
-        Debug(NRF24_StatusToString(radioStatus));
-        Debug("\r\n");
-        return;
-    }
-
-    if (frameLength == 0u)
-    {
-        return;
-    }
-
-    ++nrfRxFragmentCount;
-    memset(&message, 0, sizeof(message));
-
-    /* SecureTransport invokes SecureProtocol first and only reassembles
-       authenticated, destination/session-checked and anti-replay-safe data. */
-    transportStatus = SecureTransport_ProcessFrame(&secureTransport,
-                                                    frame,
-                                                    frameLength,
-                                                    &messageType,
-                                                    message.payload,
-                                                    sizeof(message.payload),
-                                                    &payloadLength,
-                                                    &sourceId);
-    if (transportStatus == SECURE_TRANSPORT_IN_PROGRESS)
-    {
-        return;
-    }
-
-    if (transportStatus != SECURE_TRANSPORT_OK)
-    {
-        if (transportStatus == SECURE_TRANSPORT_PROTOCOL_ERROR)
-        {
-            Communication_RecordProtocolError(
-                SecureTransport_GetLastProtocolStatus(&secureTransport));
-        }
-        else
-        {
-            Debug("SecureTransport RX error: ");
-            Debug(SecureTransport_StatusToString(transportStatus));
-            Debug("\r\n");
-        }
-        return;
-    }
-
-    message.sourceId = sourceId;
-    message.messageType = messageType;
-    message.payloadLength = payloadLength;
-    ++nrfRxMessageCount;
-
-    if (osMessageQueuePut(applicationRxQueueHandle, &message, 0u, 0u) != osOK)
-    {
-        Debug("Application RX queue full/error\r\n");
-    }
-}
-
-void Debug(const char *msg)
-{
-    if (msg == NULL) {
-        return;
-    }
-        // Wywołanie zewnętrznej, bezpiecznej funkcji USB CDC
-    SendToUSB((uint8_t*)msg, (uint16_t)strlen(msg));
-}
-
-void SendToUSB(uint8_t* Buf, uint16_t Len)
-{
-    // 1. Zabezpieczenie przed błędnymi parametrami
-    if (Buf == NULL || Len == 0) {
-        return;
-    }
-
-    // 2. Statyczne zmienne lokalne - widoczne TYLKO w tej funkcji, bezpieczne dla pamięci
-    static uint8_t txBuffer[DBG_TX_BUFFER_SIZE];
-    static SemaphoreHandle_t usbDebugMutex = NULL;
-
-    // 3. Leniwa inicjalizacja Mutexu przy pierwszym wywołaniu funkcji
-    if (usbDebugMutex == NULL) {
-        usbDebugMutex = xSemaphoreCreateMutex();
-        if (usbDebugMutex == NULL) {
-            return; // Jeśli brakuje pamięci na Mutex, wychodzimy
-        }
-    }
-
-    // 4. Pobranie Mutexu - blokuje inne Taski przed jednoczesnym dostępem do txBuffer i USB
-    if (xSemaphoreTake(usbDebugMutex, pdMS_TO_TICKS(500)) != pdTRUE) {
-        return; // Mutex zajęty przez zbyt długi czas, pomijamy ten log
-    }
-
-    // 5. Pobranie wskaźnika do stanu kontrolera USB
-    USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*) hUsbDeviceFS.pClassData;
-    if (hcdc == NULL) {
-        xSemaphoreGive(usbDebugMutex);
-        return; // Sterownik USB nie jest jeszcze gotowy
-    }
-
-    // 6. Jeśli kontroler USB wysyła coś w tle, czekamy w sposób nieblokujący CPU
-    while (hcdc->TxState != 0)
-    {
-        vTaskDelay(pdMS_TO_TICKS(1));
-    }
-
-    // 7. Dopasowanie długości danych do rozmiaru naszego bufora zabezpieczającego
-    uint16_t bytesToCopy = (Len < DBG_TX_BUFFER_SIZE) ? Len : (DBG_TX_BUFFER_SIZE - 1);
-
-    // 8. Kopiujemy dane do bezpiecznego txBuffer (gwarancja stałości danych podczas nadawania DMA)
-    memcpy(txBuffer, Buf, bytesToCopy);
-
-    // 9. Uruchomienie transmisji przez hardware USB
-    if (CDC_Transmit_FS(txBuffer, bytesToCopy) == USBD_OK)
-    {
-        // 10. Czekamy, aż dane opuszczą bufor, zanim zwolnimy Mutex i pozwolimy nadpisać txBuffer
-        while (hcdc->TxState != 0)
-        {
-            vTaskDelay(pdMS_TO_TICKS(1));
-        }
-    }
-
-    // 11. Zwolnienie Mutexu - inny Task może teraz bezpiecznie logować
-    xSemaphoreGive(usbDebugMutex);
 }
 
 /* USER CODE END Application */
-

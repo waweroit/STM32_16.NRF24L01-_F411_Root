@@ -16,7 +16,7 @@ extern "C" {
 #define SECURE_FRAME_HEADER_SIZE 13u
 #define SECURE_FRAME_OVERHEAD (SECURE_FRAME_HEADER_SIZE + SECURE_AUTH_TAG_SIZE)
 #define SECURE_MAX_FRAME_SIZE 32u
-#define SECURE_MAX_PEERS 8u
+#define SECURE_MAX_PEERS 16u
 
 /** @brief Authenticated application message types. */
 typedef enum {

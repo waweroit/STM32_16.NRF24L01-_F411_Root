@@ -1,7 +1,6 @@
 #ifndef DEVICE_KEYS_H
 #define DEVICE_KEYS_H
 
-#include <stdbool.h>
 #include <stdint.h>
 #include "Crypto.h"
 
@@ -9,19 +8,9 @@
 extern "C" {
 #endif
 
-#define DEVICE_ID_1 0x01u
-#define DEVICE_ID_2 0x02u
-
 /**
- * @brief Copy a demonstration master key for an authorized device.
- * @warning Replace every demonstration key before production deployment.
- */
-bool DeviceKeys_GetMasterKey(uint8_t deviceId,
-                             uint8_t key[CRYPTO_AES_KEY_SIZE]);
-
-/**
- * @brief Derive a full 128-bit directional key with AES-CMAC.
- * @param label Four-byte domain label, normally "ENC" or "AUTH" including NUL.
+ * Derive a 128-bit directional key with AES-CMAC from the shared communication key.
+ * The source and destination IDs are part of the KDF context.
  */
 CryptoStatus_t DeviceKeys_DeriveConnectionKey(
     const uint8_t masterKey[CRYPTO_AES_KEY_SIZE],
@@ -33,4 +22,5 @@ CryptoStatus_t DeviceKeys_DeriveConnectionKey(
 #ifdef __cplusplus
 }
 #endif
-#endif
+
+#endif /* DEVICE_KEYS_H */

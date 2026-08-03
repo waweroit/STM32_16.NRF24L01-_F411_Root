@@ -1,11 +1,5 @@
-../Core/Src/freertos.c:156:6:MX_FREERTOS_Init	8	static
-../Core/Src/freertos.c:214:6:StartDefaultTask	16	static
-../Core/Src/freertos.c:235:6:StartCommunicationTask	280	static
-../Core/Src/freertos.c:272:6:StartReadSensorsTask	288	static
-../Core/Src/freertos.c:306:16:Device1Communication_Init	80	static
-../Core/Src/freertos.c:388:13:Communication_RecordProtocolError	16	static
-../Core/Src/freertos.c:404:16:Communication_RestoreRx	16	static
-../Core/Src/freertos.c:425:13:Communication_TransmitMessage	96	static
-../Core/Src/freertos.c:544:13:Communication_PollRx	328	static
-../Core/Src/freertos.c:617:6:Debug	16	static
-../Core/Src/freertos.c:626:6:SendToUSB	24	static
+../Core/Src/freertos.c:111:6:MX_FREERTOS_Init	8	static
+../Core/Src/freertos.c:158:6:StartDefaultTask	24	static
+../Core/Src/freertos.c:193:6:StartCommunicationTask	336	static
+../Core/Src/freertos.c:291:6:StartReadSensorsTask	16	static
+../Core/Src/freertos.c:336:13:LogCommunicationError	24	static
