@@ -27,25 +27,25 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   ALLOC
  11 .ARM.attributes 00000030  00000000  00000000  000152ec  2**0
                   CONTENTS, READONLY
- 12 .debug_info   00029621  00000000  00000000  0001531c  2**0
+ 12 .debug_info   0002965d  00000000  00000000  0001531c  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 13 .debug_abbrev 00006f19  00000000  00000000  0003e93d  2**0
+ 13 .debug_abbrev 00006f19  00000000  00000000  0003e979  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 14 .debug_aranges 00002280  00000000  00000000  00045858  2**3
+ 14 .debug_aranges 00002280  00000000  00000000  00045898  2**3
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 15 .debug_rnglists 00001a0e  00000000  00000000  00047ad8  2**0
+ 15 .debug_rnglists 00001a0e  00000000  00000000  00047b18  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 16 .debug_macro  0001f03f  00000000  00000000  000494e6  2**0
+ 16 .debug_macro  0001f03f  00000000  00000000  00049526  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   0002c302  00000000  00000000  00068525  2**0
+ 17 .debug_line   0002c302  00000000  00000000  00068565  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    000a1810  00000000  00000000  00094827  2**0
+ 18 .debug_str    000a184c  00000000  00000000  00094867  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  00136037  2**0
+ 19 .comment      00000043  00000000  00000000  001360b3  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  00009920  00000000  00000000  0013607c  2**2
+ 20 .debug_frame  00009920  00000000  00000000  001360f8  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 21 .debug_line_str 0000007e  00000000  00000000  0013f99c  2**0
+ 21 .debug_line_str 0000007e  00000000  00000000  0013fa18  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -4167,9 +4167,9 @@ bool SecureCommunication_IsInitialized(const SecureCommunication_t *context)
  8002202:	4770      	bx	lr
 
 08002204 <put_u32_be>:
-
-_Static_assert((SECURE_FRAME_OVERHEAD + SECURE_MAX_PAYLOAD_SIZE) == SECURE_MAX_FRAME_SIZE,
-               "Secure frame constants must total exactly 32 bytes");
+#if (SECURE_FRAME_OVERHEAD + SECURE_MAX_PAYLOAD_SIZE) != SECURE_MAX_FRAME_SIZE
+#error "Secure frame constants must total exactly 32 bytes"
+#endif
 
 static void put_u32_be(uint8_t *buffer, uint32_t value)
 {
